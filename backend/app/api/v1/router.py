@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.api_tokens import router as api_tokens_router
 from app.api.v1.artifacts import router as artifacts_router
 from app.api.v1.events import router as events_router
 from app.api.v1.health import router as health_router
@@ -16,3 +17,4 @@ api_router.include_router(runs_router, tags=["runs"])
 api_router.include_router(metrics_router, tags=["metrics"])
 api_router.include_router(events_router, tags=["events"])
 api_router.include_router(artifacts_router, tags=["artifacts"])
+api_router.include_router(api_tokens_router, tags=["api-tokens"])
