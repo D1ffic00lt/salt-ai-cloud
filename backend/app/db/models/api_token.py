@@ -16,22 +16,22 @@ class ApiToken(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        default=uuid.uuid4
+        default=uuid.uuid4,
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        index=True
+        index=True,
     )
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
-        index=True
+        index=True,
     )
 
     name: Mapped[str] = mapped_column(String(255))
-    prefix: Mapped[str] = mapped_column(String(32), index=True)
+    token_prefix: Mapped[str] = mapped_column("prefix", String(32), index=True)
     token_hash: Mapped[str] = mapped_column(String(255), unique=True, index=True)
 
     scopes: Mapped[list] = mapped_column(JSONB, default=list)

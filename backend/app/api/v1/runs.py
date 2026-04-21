@@ -3,8 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import ensure_token_workspace, get_current_api_token, get_db, require_scope
+from app.db.models import Run
+from app.db.models.api_token import ApiToken
 from app.schemas.run import RunCreate, RunRead, RunUpdate
+from app.services.project_service import ProjectService
 from app.services.run_service import RunService
 
 router = APIRouter()
@@ -16,23 +19,32 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
 )
 def create_run(
-    project_id: UUID,
-    payload: RunCreate,
-    db: Session = Depends(get_db),
-) -> RunRead:
-    service = RunService(db)
+        project_id: UUID,
+        payload: RunCreate,
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> Run:
+    project_service = ProjectService(db)
+    run_service = RunService(db)
 
     try:
-        return service.create_run(project_id=project_id, data=payload)
+        project = project_service.get_project(project_id)
+        ensure_token_workspace(token, project.workspace_id)
+        require_scope(token, "runs:write")
+
+        if payload.created_by_id is None:
+            payload = payload.model_copy(update={"created_by_id": token.user_id})
+
+        return run_service.create_run(project_id=project_id, data=payload)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/projects/{project_id}/runs", response_model=list[RunRead])
 def list_project_runs(
-    project_id: UUID,
-    db: Session = Depends(get_db),
-) -> list[RunRead]:
+        project_id: UUID,
+        db: Session = Depends(get_db),
+) -> list[Run]:
     service = RunService(db)
 
     try:
@@ -43,9 +55,9 @@ def list_project_runs(
 
 @router.get("/runs/{run_id}", response_model=RunRead)
 def get_run(
-    run_id: UUID,
-    db: Session = Depends(get_db),
-) -> RunRead:
+        run_id: UUID,
+        db: Session = Depends(get_db),
+) -> Run:
     service = RunService(db)
 
     try:
@@ -56,13 +68,18 @@ def get_run(
 
 @router.patch("/runs/{run_id}", response_model=RunRead)
 def update_run(
-    run_id: UUID,
-    payload: RunUpdate,
-    db: Session = Depends(get_db),
-) -> RunRead:
+        run_id: UUID,
+        payload: RunUpdate,
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> Run:
     service = RunService(db)
 
     try:
+        run = service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "runs:write")
+
         return service.update_run(run_id=run_id, data=payload)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -72,12 +89,17 @@ def update_run(
 
 @router.post("/runs/{run_id}/finish", response_model=RunRead)
 def finish_run(
-    run_id: UUID,
-    db: Session = Depends(get_db),
-) -> RunRead:
+        run_id: UUID,
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> Run:
     service = RunService(db)
 
     try:
+        run = service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "runs:write")
+
         return service.finish_run(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -87,12 +109,17 @@ def finish_run(
 
 @router.post("/runs/{run_id}/fail", response_model=RunRead)
 def fail_run(
-    run_id: UUID,
-    db: Session = Depends(get_db),
-) -> RunRead:
+        run_id: UUID,
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> Run:
     service = RunService(db)
 
     try:
+        run = service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "runs:write")
+
         return service.fail_run(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
