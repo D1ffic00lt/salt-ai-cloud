@@ -3,8 +3,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import ensure_token_workspace, get_current_api_token, get_db, require_scope
 from app.db.models import Artifact
+from app.db.models.api_token import ApiToken
 from app.schemas.artifact import (
     ArtifactComplete,
     ArtifactCreate,
@@ -12,6 +13,7 @@ from app.schemas.artifact import (
     ArtifactRead,
 )
 from app.services.artifact_service import ArtifactService
+from app.services.run_service import RunService
 
 router = APIRouter()
 
@@ -25,11 +27,17 @@ def create_artifact(
         run_id: UUID,
         payload: ArtifactCreate,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Artifact:
-    service = ArtifactService(db)
+    run_service = RunService(db)
+    artifact_service = ArtifactService(db)
 
     try:
-        return service.create_artifact(run_id=run_id, data=payload)
+        run = run_service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "artifacts:write")
+
+        return artifact_service.create_artifact(run_id=run_id, data=payload)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
@@ -67,10 +75,15 @@ def complete_artifact(
         artifact_id: UUID,
         payload: ArtifactComplete,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Artifact:
     service = ArtifactService(db)
 
     try:
+        artifact = service.get_artifact(artifact_id)
+        ensure_token_workspace(token, artifact.workspace_id)
+        require_scope(token, "artifacts:write")
+
         return service.complete_artifact(artifact_id=artifact_id, data=payload)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -82,10 +95,15 @@ def complete_artifact(
 def get_artifact_download_reference(
         artifact_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> ArtifactDownloadRead:
     service = ArtifactService(db)
 
     try:
+        artifact = service.get_artifact(artifact_id)
+        ensure_token_workspace(token, artifact.workspace_id)
+        require_scope(token, "artifacts:write")
+
         artifact, download_url = service.get_download_reference(artifact_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
