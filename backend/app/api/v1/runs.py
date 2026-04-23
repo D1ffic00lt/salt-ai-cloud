@@ -44,11 +44,17 @@ def create_run(
 def list_project_runs(
         project_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> list[Run]:
-    service = RunService(db)
+    project_service = ProjectService(db)
+    run_service = RunService(db)
 
     try:
-        return service.list_project_runs(project_id)
+        project = project_service.get_project(project_id)
+        ensure_token_workspace(token, project.workspace_id)
+        require_scope(token, "runs:write")
+
+        return run_service.list_project_runs(project_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -57,11 +63,16 @@ def list_project_runs(
 def get_run(
         run_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Run:
     service = RunService(db)
 
     try:
-        return service.get_run(run_id)
+        run = service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "runs:write")
+
+        return run
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

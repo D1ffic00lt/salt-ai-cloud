@@ -43,10 +43,16 @@ def create_metric(
 def list_run_metrics(
         run_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> list[Metric]:
-    service = MetricService(db)
+    run_service = RunService(db)
+    metric_service = MetricService(db)
 
     try:
-        return service.list_run_metrics(run_id)
+        run = run_service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "runs:write")
+
+        return metric_service.list_run_metrics(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
