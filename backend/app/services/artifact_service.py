@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.models.artifact import Artifact
@@ -91,6 +92,44 @@ class ArtifactService:
 
         return artifact
 
+    def upload_artifact_file(self, artifact_id: UUID, file: UploadFile) -> Artifact:
+        artifact = self.get_artifact(artifact_id)
+
+        if artifact.status == ArtifactStatus.DELETED.value:
+            raise ValueError("Deleted artifact cannot be uploaded")
+
+        if artifact.status == ArtifactStatus.UPLOADED.value:
+            raise ValueError("Uploaded artifact cannot be uploaded again")
+
+        stored = self.storage.save_artifact_file(
+            workspace_id=artifact.workspace_id,
+            run_id=artifact.run_id,
+            artifact_id=artifact.id,
+            name=artifact.name,
+            fileobj=file.file,
+            content_type=file.content_type,
+        )
+
+        meta = {
+            **(artifact.meta or {}),
+            "storage_mode": "local_upload",
+            "uploaded_filename": file.filename,
+        }
+
+        artifact = self.artifacts.complete(
+            artifact=artifact,
+            storage_uri=stored.storage_uri,
+            size_bytes=stored.size_bytes,
+            content_type=stored.content_type,
+            hash_=stored.sha256,
+            meta=meta,
+        )
+
+        self.db.commit()
+        self.db.refresh(artifact)
+
+        return artifact
+
     def get_download_reference(self, artifact_id: UUID) -> tuple[Artifact, str]:
         artifact = self.get_artifact(artifact_id)
 
@@ -106,3 +145,16 @@ class ArtifactService:
         )
 
         return artifact, download_url
+
+    def get_content_path(self, artifact_id: UUID) -> tuple[Artifact, str]:
+        artifact = self.get_artifact(artifact_id)
+
+        if artifact.status != ArtifactStatus.UPLOADED.value:
+            raise ValueError("Artifact is not uploaded")
+
+        if artifact.storage_uri is None:
+            raise ValueError("Artifact has no storage URI")
+
+        path = self.storage.get_artifact_path(artifact.storage_uri)
+
+        return artifact, str(path)
