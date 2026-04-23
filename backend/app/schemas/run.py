@@ -3,6 +3,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.artifact import ArtifactRead
+from app.schemas.event import EventRead
+from app.schemas.metric import MetricRead
+
 
 class RunCreate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
@@ -35,3 +39,10 @@ class RunRead(BaseModel):
     finished_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class RunDetailsRead(BaseModel):
+    run: RunRead
+    metrics: list[MetricRead] = Field(default_factory=list)
+    events: list[EventRead] = Field(default_factory=list)
+    artifacts: list[ArtifactRead] = Field(default_factory=list)

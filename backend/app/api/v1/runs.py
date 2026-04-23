@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import ensure_token_workspace, get_current_api_token, get_db, require_scope
 from app.db.models import Run
 from app.db.models.api_token import ApiToken
-from app.schemas.run import RunCreate, RunRead, RunUpdate
+from app.schemas.run import RunCreate, RunDetailsRead, RunRead, RunUpdate
+from app.services.artifact_service import ArtifactService
+from app.services.event_service import EventService
+from app.services.metric_service import MetricService
 from app.services.project_service import ProjectService
 from app.services.run_service import RunService
 
@@ -73,6 +76,32 @@ def get_run(
         require_scope(token, "runs:write")
 
         return run
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/runs/{run_id}/details", response_model=RunDetailsRead)
+def get_run_details(
+        run_id: UUID,
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> RunDetailsRead:
+    run_service = RunService(db)
+    metric_service = MetricService(db)
+    event_service = EventService(db)
+    artifact_service = ArtifactService(db)
+
+    try:
+        run = run_service.get_run(run_id)
+        ensure_token_workspace(token, run.workspace_id)
+        require_scope(token, "runs:write")
+
+        return RunDetailsRead(
+            run=run,
+            metrics=metric_service.list_run_metrics(run_id),
+            events=event_service.list_run_events(run_id),
+            artifacts=artifact_service.list_run_artifacts(run_id),
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
