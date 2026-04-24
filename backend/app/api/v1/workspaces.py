@@ -3,9 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import ensure_token_workspace, get_current_api_token, get_db, require_scope
 from app.db.models import Workspace
-from app.schemas.workspace import WorkspaceCreate, WorkspaceRead
+from app.db.models.api_token import ApiToken
+from app.schemas.project import ProjectRead
+from app.schemas.workspace import WorkspaceCreate, WorkspaceDetailsRead, WorkspaceRead
+from app.services.project_service import ProjectService
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter()
@@ -44,5 +47,29 @@ def get_workspace(
 
     try:
         return service.get_workspace(workspace_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{workspace_id}/details", response_model=WorkspaceDetailsRead)
+def get_workspace_details(
+        workspace_id: UUID,
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> WorkspaceDetailsRead:
+    workspace_service = WorkspaceService(db)
+    project_service = ProjectService(db)
+
+    try:
+        workspace = workspace_service.get_workspace(workspace_id)
+        ensure_token_workspace(token, workspace.id)
+        require_scope(token, "runs:write")
+
+        projects = project_service.list_workspace_projects(workspace_id)
+
+        return WorkspaceDetailsRead(
+            workspace=WorkspaceRead.model_validate(workspace),
+            projects=[ProjectRead.model_validate(project) for project in projects],
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

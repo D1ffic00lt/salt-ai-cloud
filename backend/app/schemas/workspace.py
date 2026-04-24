@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.project import ProjectRead
+
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
@@ -21,3 +23,8 @@ class WorkspaceRead(BaseModel):
     plan_id: UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class WorkspaceDetailsRead(BaseModel):
+    workspace: WorkspaceRead
+    projects: list[ProjectRead] = Field(default_factory=list)
