@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.run import RunRead
+
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
@@ -20,3 +22,8 @@ class ProjectRead(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ProjectDetailsRead(BaseModel):
+    project: ProjectRead
+    runs: list[RunRead] = Field(default_factory=list)
