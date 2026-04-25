@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.project import Project
@@ -28,6 +28,14 @@ class ProjectRepository:
             .order_by(Project.created_at.desc())
         )
         return list(self.db.execute(statement).scalars().all())
+
+    def count_by_workspace_id(self, workspace_id: UUID) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Project)
+            .where(Project.workspace_id == workspace_id)
+        )
+        return int(self.db.execute(statement).scalar_one())
 
     def create(
             self,

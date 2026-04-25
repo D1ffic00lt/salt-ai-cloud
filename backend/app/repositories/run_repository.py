@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.run import Run
@@ -22,6 +22,62 @@ class RunRepository:
             .order_by(Run.created_at.desc())
         )
         return list(self.db.execute(statement).scalars().all())
+
+    def list_recent_by_workspace_id(self, workspace_id: UUID, limit: int) -> list[Run]:
+        statement = (
+            select(Run)
+            .where(Run.workspace_id == workspace_id)
+            .order_by(Run.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.db.execute(statement).scalars().all())
+
+    def list_recent_by_project_id(self, project_id: UUID, limit: int) -> list[Run]:
+        statement = (
+            select(Run)
+            .where(Run.project_id == project_id)
+            .order_by(Run.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.db.execute(statement).scalars().all())
+
+    def count_by_workspace_id(self, workspace_id: UUID) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Run)
+            .where(Run.workspace_id == workspace_id)
+        )
+        return int(self.db.execute(statement).scalar_one())
+
+    def count_by_project_id(self, project_id: UUID) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Run)
+            .where(Run.project_id == project_id)
+        )
+        return int(self.db.execute(statement).scalar_one())
+
+    def count_by_workspace_id_and_status(self, workspace_id: UUID, status: str) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Run)
+            .where(
+                Run.workspace_id == workspace_id,
+                Run.status == status,
+            )
+        )
+        return int(self.db.execute(statement).scalar_one())
+
+    def count_by_project_id_and_status(self, project_id: UUID, status: str) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Run)
+            .where(
+                Run.project_id == project_id,
+                Run.status == status,
+            )
+        )
+        return int(self.db.execute(statement).scalar_one())
 
     def create(
             self,

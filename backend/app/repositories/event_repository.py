@@ -1,10 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.event import Event
+from app.db.models.run import Run
 
 
 class EventRepository:
@@ -18,6 +19,23 @@ class EventRepository:
             .order_by(Event.timestamp.asc(), Event.created_at.asc())
         )
         return list(self.db.execute(statement).scalars().all())
+
+    def count_by_workspace_id(self, workspace_id: UUID) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Event)
+            .where(Event.workspace_id == workspace_id)
+        )
+        return int(self.db.execute(statement).scalar_one())
+
+    def count_by_project_id(self, project_id: UUID) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Event)
+            .join(Run, Event.run_id == Run.id)
+            .where(Run.project_id == project_id)
+        )
+        return int(self.db.execute(statement).scalar_one())
 
     def create(
             self,
