@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import ensure_token_workspace, get_current_api_token, get_db, require_scope
 from app.db.models import Run
 from app.db.models.api_token import ApiToken
+from app.schemas.artifact import ArtifactRead
+from app.schemas.event import EventRead
+from app.schemas.metric import MetricRead
 from app.schemas.run import RunCreate, RunDetailsRead, RunRead, RunUpdate
 from app.services.artifact_service import ArtifactService
 from app.services.event_service import EventService
@@ -96,11 +99,15 @@ def get_run_details(
         ensure_token_workspace(token, run.workspace_id)
         require_scope(token, "runs:write")
 
+        metrics = metric_service.list_run_metrics(run_id)
+        events = event_service.list_run_events(run_id)
+        artifacts = artifact_service.list_run_artifacts(run_id)
+
         return RunDetailsRead(
-            run=run,
-            metrics=metric_service.list_run_metrics(run_id),
-            events=event_service.list_run_events(run_id),
-            artifacts=artifact_service.list_run_artifacts(run_id),
+            run=RunRead.model_validate(run),
+            metrics=[MetricRead.model_validate(metric) for metric in metrics],
+            events=[EventRead.model_validate(event) for event in events],
+            artifacts=[ArtifactRead.model_validate(artifact) for artifact in artifacts],
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
