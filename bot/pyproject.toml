@@ -1,0 +1,19 @@
+[project]
+name = "saltai-cloud-bot"
+version = "0.1.0"
+description = "Telegram Bot shell for SaltAI Cloud"
+requires-python = ">=3.12"
+dependencies = [
+    "pyTelegramBotAPI>=4.20.0,<5.0.0"
+]
+
+[project.scripts]
+saltai-cloud-bot = "app.main:main"
+
+[build-system]
+requires = ["setuptools>=68.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
