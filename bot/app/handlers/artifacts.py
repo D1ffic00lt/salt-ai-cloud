@@ -5,8 +5,8 @@ from typing import Any
 
 from telebot import TeleBot, types
 
-from bot.app.client import SaltCloudClient, SaltCloudClientError
-from bot.app.config import Settings
+from app.client import SaltCloudClient, SaltCloudClientError
+from app.config import Settings
 
 
 def register_artifact_handlers(

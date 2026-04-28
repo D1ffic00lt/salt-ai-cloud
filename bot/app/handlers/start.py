@@ -2,7 +2,7 @@ from html import escape
 
 from telebot import TeleBot, types
 
-from bot.app.config import Settings
+from app.config import Settings
 
 
 def register_start_handlers(bot: TeleBot, settings: Settings) -> None:

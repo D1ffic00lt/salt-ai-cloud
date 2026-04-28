@@ -2,9 +2,9 @@ import logging
 
 from telebot import TeleBot
 
-from bot.app.client import SaltCloudClient
-from bot.app.config import Settings
-from bot.app.handlers import (
+from app.client import SaltCloudClient
+from app.config import Settings
+from app.handlers import (
     register_artifact_handlers,
     register_run_handlers,
     register_start_handlers,
