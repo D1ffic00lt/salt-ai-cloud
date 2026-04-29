@@ -3,7 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_api_token, get_db
+from app.api.deps import (
+    get_current_api_token,
+    get_db,
+    get_optional_current_api_token,
+)
 from app.db.models.api_token import ApiToken
 from app.schemas.api_token import (
     ApiTokenCreate,
@@ -25,13 +29,20 @@ def create_api_token(
         workspace_id: UUID,
         payload: ApiTokenCreate,
         db: Session = Depends(get_db),
+        current_token: ApiToken | None = Depends(get_optional_current_api_token),
 ) -> ApiTokenCreated:
     service = ApiTokenService(db)
 
     try:
-        token, raw_token = service.create_token(workspace_id=workspace_id, data=payload)
+        token, raw_token = service.create_token(
+            workspace_id=workspace_id,
+            data=payload,
+            current_token=current_token,
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     return ApiTokenCreated(
         id=token.id,
@@ -50,26 +61,45 @@ def create_api_token(
 def list_workspace_api_tokens(
         workspace_id: UUID,
         db: Session = Depends(get_db),
+        current_token: ApiToken = Depends(get_current_api_token),
 ) -> list[ApiToken]:
     service = ApiTokenService(db)
 
     try:
-        return service.list_workspace_tokens(workspace_id)
+        return service.list_workspace_tokens(
+            workspace_id=workspace_id,
+            current_token=current_token,
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.delete("/api-tokens/{token_id}", response_model=ApiTokenRead)
+def delete_api_token(
+        token_id: UUID,
+        db: Session = Depends(get_db),
+        current_token: ApiToken = Depends(get_current_api_token),
+) -> ApiToken:
+    return _revoke_api_token(
+        token_id=token_id,
+        db=db,
+        current_token=current_token,
+    )
 
 
 @router.post("/api-tokens/{token_id}/revoke", response_model=ApiTokenRead)
 def revoke_api_token(
         token_id: UUID,
         db: Session = Depends(get_db),
+        current_token: ApiToken = Depends(get_current_api_token),
 ) -> ApiToken:
-    service = ApiTokenService(db)
-
-    try:
-        return service.revoke_token(token_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _revoke_api_token(
+        token_id=token_id,
+        db=db,
+        current_token=current_token,
+    )
 
 
 @router.get("/auth/me", response_model=CurrentApiUser)
@@ -82,3 +112,21 @@ def get_current_user_from_api_token(
         token_id=token.id,
         scopes=token.scopes,
     )
+
+
+def _revoke_api_token(
+        token_id: UUID,
+        db: Session,
+        current_token: ApiToken,
+) -> ApiToken:
+    service = ApiTokenService(db)
+
+    try:
+        return service.revoke_token(
+            token_id=token_id,
+            current_token=current_token,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc

@@ -7,7 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field
 class ApiTokenCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     user_id: UUID
-    scopes: list[str] = Field(default_factory=lambda: ["runs:write", "artifacts:write"])
+    scopes: list[str] = Field(
+        default_factory=lambda: [
+            "runs:write",
+            "artifacts:write",
+            "tokens:write",
+        ]
+    )
     expires_at: datetime | None = None
 
 
