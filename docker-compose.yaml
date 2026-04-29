@@ -10,13 +10,25 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
+      - salt_ai_cloud_artifacts:/app/.saltai-cloud/artifacts
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
 
+  miniapp:
+    build:
+      context: .
+      dockerfile: miniapp/Dockerfile
+      args:
+        VITE_SALTAI_CLOUD_API_BASE_URL: /api/v1
+    depends_on:
+      - api
+
   bot:
+    profiles:
+      - bot
     build:
       context: ./bot
       dockerfile: Dockerfile
@@ -52,6 +64,8 @@ services:
       - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - api
+      - miniapp
 
 volumes:
   salt_ai_cloud_postgres:
+  salt_ai_cloud_artifacts:
