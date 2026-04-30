@@ -51,6 +51,36 @@ def register_artifact_handlers(
             _format_artifacts(run_id=run_id, artifacts=artifacts),
         )
 
+    @bot.message_handler(commands=["artifact"])
+    def get_artifact(message: types.Message) -> None:
+        if not client.is_authenticated:
+            bot.send_message(
+                message.chat.id,
+                "SALTAI_CLOUD_API_TOKEN не задан. Для /artifact нужен backend API token.",
+            )
+            return
+
+        args = _args(message)
+        if not args:
+            bot.send_message(
+                message.chat.id,
+                "Укажи artifact_id: <code>/artifact &lt;artifact_id&gt;</code>",
+            )
+            return
+
+        artifact_id = args[0]
+
+        try:
+            artifact = client.get_artifact(artifact_id)
+        except SaltCloudClientError as exc:
+            bot.send_message(message.chat.id, f"Не удалось получить artifact: {escape(str(exc))}")
+            return
+
+        bot.send_message(
+            message.chat.id,
+            _format_artifact_details(artifact),
+        )
+
 
 def _args(message: types.Message) -> list[str]:
     text = message.text or ""
@@ -106,7 +136,67 @@ def _format_artifacts(run_id: str, artifacts: list[dict[str, Any]]) -> str:
         if content_type:
             lines.append(f"   content_type: <code>{escape(str(content_type))}</code>")
 
+        lines.append(f"   details: <code>/artifact {escape(artifact_id)}</code>")
         lines.append("")
+
+    return _telegram_safe("\n".join(lines))
+
+
+def _format_artifact_details(artifact: dict[str, Any]) -> str:
+    artifact_id = str(artifact.get("id") or "")
+    workspace_id = str(artifact.get("workspace_id") or "")
+    run_id = str(artifact.get("run_id") or "")
+    name = str(artifact.get("name") or "unnamed")
+    kind = str(artifact.get("kind") or "other")
+    status = str(artifact.get("status") or "unknown")
+    storage_uri = str(artifact.get("storage_uri") or "")
+    size_bytes = artifact.get("size_bytes")
+    content_type = artifact.get("content_type")
+    artifact_hash = str(artifact.get("hash") or "")
+    created_at = str(artifact.get("created_at") or "unknown")
+    completed_at = str(artifact.get("completed_at") or "")
+    meta = artifact.get("meta") or {}
+
+    lines = [
+        "<b>Artifact details</b>",
+        "",
+        f"name: <b>{escape(name)}</b>",
+        f"id: <code>{escape(artifact_id)}</code>",
+        f"kind: <code>{escape(kind)}</code>",
+        f"status: <code>{escape(status)}</code>",
+    ]
+
+    if workspace_id:
+        lines.append(f"workspace_id: <code>{escape(workspace_id)}</code>")
+
+    if run_id:
+        lines.append(f"run_id: <code>{escape(run_id)}</code>")
+
+    lines.append(f"created: <code>{escape(created_at)}</code>")
+
+    if completed_at:
+        lines.append(f"completed: <code>{escape(completed_at)}</code>")
+
+    if size_bytes is not None:
+        lines.append(f"size: <code>{escape(_format_size(int(size_bytes)))}</code>")
+
+    if content_type:
+        lines.append(f"content_type: <code>{escape(str(content_type))}</code>")
+
+    if artifact_hash:
+        lines.append(f"hash: <code>{escape(artifact_hash)}</code>")
+
+    if storage_uri:
+        lines.append(f"storage_uri: <code>{escape(_shorten(storage_uri, 300))}</code>")
+
+    if meta:
+        lines.extend([
+            "",
+            "<b>Meta</b>",
+        ])
+
+        for key, value in list(meta.items())[:10]:
+            lines.append(f"- <code>{escape(str(key))}</code>: <code>{escape(_shorten(str(value), 120))}</code>")
 
     return _telegram_safe("\n".join(lines))
 
@@ -123,6 +213,13 @@ def _format_size(size_bytes: int) -> str:
         value /= 1024
 
     return f"{size_bytes} B"
+
+
+def _shorten(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+
+    return value[:limit - 3] + "..."
 
 
 def _telegram_safe(text: str) -> str:

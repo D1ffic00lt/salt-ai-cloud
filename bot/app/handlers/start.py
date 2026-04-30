@@ -14,7 +14,9 @@ def register_start_handlers(bot: TeleBot, settings: Settings) -> None:
             "Команды:",
             "<code>/runs</code> — последние runs для проекта из SALTAI_DEFAULT_PROJECT_ID",
             "<code>/runs &lt;project_id&gt;</code> — последние runs проекта",
+            "<code>/run &lt;run_id&gt;</code> — детали конкретного run",
             "<code>/artifacts &lt;run_id&gt;</code> — artifacts конкретного run",
+            "<code>/artifact &lt;artifact_id&gt;</code> — детали конкретного artifact",
             "",
             f"Backend: <code>{escape(settings.cloud_base_url)}</code>",
         ]
