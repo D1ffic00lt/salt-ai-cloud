@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./config";
-import type { Artifact, Run, RunDetails } from "./types";
+import type { Artifact, ProjectOverview, RunDetails, WorkspaceOverview } from "./types";
 
 export class SaltCloudApiError extends Error {
   constructor(message: string) {
@@ -15,16 +15,16 @@ export class SaltCloudApi {
     this.token = token.trim();
   }
 
-  async listProjectRuns(projectId: string): Promise<Run[]> {
-    return this.request<Run[]>(`/projects/${encodeURIComponent(projectId)}/runs`);
+  async getOverview(): Promise<WorkspaceOverview> {
+    return this.request<WorkspaceOverview>("/overview?recent_runs_limit=50");
+  }
+
+  async getProjectOverview(projectId: string): Promise<ProjectOverview> {
+    return this.request<ProjectOverview>(`/projects/${encodeURIComponent(projectId)}/overview?recent_runs_limit=50`);
   }
 
   async getRunDetails(runId: string): Promise<RunDetails> {
     return this.request<RunDetails>(`/runs/${encodeURIComponent(runId)}/details`);
-  }
-
-  async listRunArtifacts(runId: string): Promise<Artifact[]> {
-    return this.request<Artifact[]>(`/runs/${encodeURIComponent(runId)}/artifacts`);
   }
 
   async getArtifact(artifactId: string): Promise<Artifact> {

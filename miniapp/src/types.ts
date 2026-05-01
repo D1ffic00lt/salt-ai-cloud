@@ -1,3 +1,23 @@
+export type Workspace = {
+  id: string;
+  name: string;
+  slug: string;
+  owner_user_id: string;
+  plan_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Project = {
+  id: string;
+  workspace_id: string;
+  created_by_id: string | null;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Run = {
   id: string;
   workspace_id: string;
@@ -52,6 +72,45 @@ export type Artifact = {
   meta: Record<string, unknown>;
   created_at: string;
   completed_at: string | null;
+};
+
+export type RunStatusCounters = {
+  created: number;
+  running: number;
+  finished: number;
+  failed: number;
+};
+
+export type WorkspaceOverviewCounters = {
+  projects_count: number;
+  runs_count: number;
+  run_statuses: RunStatusCounters;
+  metrics_count: number;
+  events_count: number;
+  artifacts_count: number;
+  storage_bytes: number;
+};
+
+export type ProjectOverviewCounters = {
+  runs_count: number;
+  run_statuses: RunStatusCounters;
+  metrics_count: number;
+  events_count: number;
+  artifacts_count: number;
+  storage_bytes: number;
+};
+
+export type WorkspaceOverview = {
+  workspace: Workspace;
+  counters: WorkspaceOverviewCounters;
+  projects: Project[];
+  recent_runs: Run[];
+};
+
+export type ProjectOverview = {
+  project: Project;
+  counters: ProjectOverviewCounters;
+  recent_runs: Run[];
 };
 
 export type RunDetails = {

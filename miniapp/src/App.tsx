@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { PROJECT_STORAGE_KEY, TOKEN_STORAGE_KEY } from "./config";
+import { TOKEN_STORAGE_KEY } from "./config";
 import { SaltCloudApi, SaltCloudApiError } from "./api";
-import type { Artifact, Run, RunDetails } from "./types";
+import type { Artifact, Project, Run, RunDetails, WorkspaceOverview } from "./types";
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || "");
-  const [projectId, setProjectId] = useState(() => localStorage.getItem(PROJECT_STORAGE_KEY) || "");
+  const [overview, setOverview] = useState<WorkspaceOverview | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [selectedRunDetails, setSelectedRunDetails] = useState<RunDetails | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
@@ -27,20 +28,25 @@ export function App() {
     localStorage.setItem(TOKEN_STORAGE_KEY, value);
   }
 
-  function saveProjectId(value: string) {
-    setProjectId(value);
-    localStorage.setItem(PROJECT_STORAGE_KEY, value);
+  async function loadOverview() {
+    await runAction(async () => {
+      const data = await api.getOverview();
+      data.projects = sortByDate(data.projects, "created_at");
+      data.recent_runs = sortByDate(data.recent_runs, "created_at");
+      setOverview(data);
+      setSelectedProject(null);
+      setRuns(data.recent_runs);
+      setSelectedRunDetails(null);
+      setSelectedArtifact(null);
+    });
   }
 
-  async function loadRuns() {
-    if (!projectId.trim()) {
-      setError("Project ID is required");
-      return;
-    }
-
+  async function openProject(project: Project) {
     await runAction(async () => {
-      const data = await api.listProjectRuns(projectId.trim());
-      setRuns(sortByDate(data, "created_at"));
+      const data = await api.getProjectOverview(project.id);
+      data.recent_runs = sortByDate(data.recent_runs, "created_at");
+      setSelectedProject(data.project);
+      setRuns(data.recent_runs);
       setSelectedRunDetails(null);
       setSelectedArtifact(null);
     });
@@ -86,8 +92,8 @@ export function App() {
       <section className="hero card">
         <div>
           <p className="eyebrow">SaltAI Cloud</p>
-          <h1>Experiment runs</h1>
-          <p className="muted">Минимальный Telegram Mini App для просмотра runs и artifacts.</p>
+          <h1>Mini App</h1>
+          <p className="muted">Введи API token, miniapp сам подтянет workspace, projects и runs.</p>
         </div>
       </section>
 
@@ -102,48 +108,61 @@ export function App() {
           />
         </label>
 
-        <label>
-          <span>Project ID</span>
-          <input
-            value={projectId}
-            placeholder="UUID проекта"
-            onChange={(event) => saveProjectId(event.target.value)}
-          />
-        </label>
-
-        <button disabled={loading} onClick={loadRuns}>
-          {loading ? "Loading..." : "Load runs"}
+        <button disabled={loading} onClick={loadOverview}>
+          {loading ? "Loading..." : "Load SaltAI Cloud"}
         </button>
 
         {error && <p className="error">{error}</p>}
       </section>
 
+      {overview && (
+        <section className="card hero">
+          <div className="section-header">
+            <h2>{overview.workspace.name}</h2>
+            <span>{overview.workspace.slug}</span>
+          </div>
+
+          <div className="stats">
+            <Stat label="projects" value={overview.counters.projects_count} />
+            <Stat label="runs" value={overview.counters.runs_count} />
+            <Stat label="artifacts" value={overview.counters.artifacts_count} />
+          </div>
+        </section>
+      )}
+
       <section className="grid">
         <div className="card">
           <div className="section-header">
-            <h2>Runs</h2>
-            <span>{runs.length}</span>
+            <h2>Projects</h2>
+            <span>{overview?.projects.length || 0}</span>
           </div>
 
-          {runs.length === 0 ? (
-            <p className="muted">Runs пока не загружены.</p>
+          {overview ? (
+            <ProjectsView
+              projects={overview.projects}
+              selectedProjectId={selectedProject?.id || ""}
+              onOpenProject={openProject}
+            />
           ) : (
-            <div className="list">
-              {runs.map((run) => (
-                <button
-                  key={run.id}
-                  className="list-item"
-                  onClick={() => openRun(run.id)}
-                >
-                  <span className="item-title">{run.name || "unnamed"}</span>
-                  <span className="item-meta">{run.status}</span>
-                  <span className="item-id">{run.id}</span>
-                </button>
-              ))}
-            </div>
+            <p className="muted">Введи token и нажми Load SaltAI Cloud.</p>
           )}
         </div>
 
+        <div className="card">
+          <div className="section-header">
+            <h2>{selectedProject ? "Project runs" : "Recent runs"}</h2>
+            <span>{runs.length}</span>
+          </div>
+
+          <RunsView
+            project={selectedProject}
+            runs={runs}
+            onOpenRun={openRun}
+          />
+        </div>
+      </section>
+
+      <section className="grid">
         <div className="card">
           <div className="section-header">
             <h2>Run details</h2>
@@ -159,21 +178,93 @@ export function App() {
             <p className="muted">Выбери run из списка.</p>
           )}
         </div>
-      </section>
 
-      <section className="card">
-        <div className="section-header">
-          <h2>Artifact details</h2>
-          {selectedArtifact && <span>{selectedArtifact.status}</span>}
+        <div className="card">
+          <div className="section-header">
+            <h2>Artifact details</h2>
+            {selectedArtifact && <span>{selectedArtifact.status}</span>}
+          </div>
+
+          {selectedArtifact ? (
+            <ArtifactView artifact={selectedArtifact} />
+          ) : (
+            <p className="muted">Выбери artifact внутри run details.</p>
+          )}
         </div>
-
-        {selectedArtifact ? (
-          <ArtifactView artifact={selectedArtifact} />
-        ) : (
-          <p className="muted">Выбери artifact внутри run details.</p>
-        )}
       </section>
     </main>
+  );
+}
+
+function ProjectsView({
+  projects,
+  selectedProjectId,
+  onOpenProject
+}: {
+  projects: Project[];
+  selectedProjectId: string;
+  onOpenProject: (project: Project) => void;
+}) {
+  if (projects.length === 0) {
+    return <p className="muted">Projects пока нет.</p>;
+  }
+
+  return (
+    <div className="list">
+      {projects.map((project) => (
+        <button
+          key={project.id}
+          className="list-item"
+          onClick={() => onOpenProject(project)}
+        >
+          <span className="item-title">
+            {project.name || "unnamed"}
+            {project.id === selectedProjectId ? " · selected" : ""}
+          </span>
+          <span className="item-meta">{project.description || "no description"}</span>
+          <span className="item-id">{project.id}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RunsView({
+  project,
+  runs,
+  onOpenRun
+}: {
+  project: Project | null;
+  runs: Run[];
+  onOpenRun: (runId: string) => void;
+}) {
+  if (runs.length === 0) {
+    return (
+      <div className="details">
+        {project && <KeyValue label="project" value={project.id} />}
+        <p className="muted">Runs пока нет.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="details">
+      {project && <KeyValue label="project" value={project.id} />}
+
+      <div className="list">
+        {runs.map((run) => (
+          <button
+            key={run.id}
+            className="list-item"
+            onClick={() => onOpenRun(run.id)}
+          >
+            <span className="item-title">{run.name || "unnamed"}</span>
+            <span className="item-meta">{run.status}</span>
+            <span className="item-id">{run.id}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

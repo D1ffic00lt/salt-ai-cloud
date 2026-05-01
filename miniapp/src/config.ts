@@ -3,4 +3,3 @@ export const API_BASE_URL = (
 ).replace(/\/$/, "");
 
 export const TOKEN_STORAGE_KEY = "saltai_cloud_api_token";
-export const PROJECT_STORAGE_KEY = "saltai_cloud_project_id";

@@ -13,6 +13,22 @@ from app.services.workspace_service import WorkspaceService
 router = APIRouter()
 
 
+@router.get("/overview", response_model=WorkspaceOverviewRead)
+def get_current_workspace_overview(
+        recent_runs_limit: int = Query(default=20, ge=1, le=100),
+        db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
+) -> WorkspaceOverviewRead:
+    overview_service = OverviewService(db)
+
+    require_scope(token, "runs:write")
+
+    return overview_service.get_workspace_overview(
+        workspace_id=token.workspace_id,
+        recent_runs_limit=recent_runs_limit,
+    )
+
+
 @router.get("/workspaces/{workspace_id}/overview", response_model=WorkspaceOverviewRead)
 def get_workspace_overview(
         workspace_id: UUID,
