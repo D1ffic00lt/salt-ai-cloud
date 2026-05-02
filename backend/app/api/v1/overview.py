@@ -21,7 +21,9 @@ def get_current_workspace_overview(
 ) -> WorkspaceOverviewRead:
     overview_service = OverviewService(db)
 
-    require_scope(token, "runs:write")
+    require_scope(token, "workspaces:read")
+    require_scope(token, "projects:read")
+    require_scope(token, "runs:read")
 
     return overview_service.get_workspace_overview(
         workspace_id=token.workspace_id,
@@ -42,7 +44,9 @@ def get_workspace_overview(
     try:
         workspace = workspace_service.get_workspace(workspace_id)
         ensure_token_workspace(token, workspace.id)
-        require_scope(token, "runs:write")
+        require_scope(token, "workspaces:read")
+        require_scope(token, "projects:read")
+        require_scope(token, "runs:read")
 
         return overview_service.get_workspace_overview(
             workspace_id=workspace_id,
@@ -65,7 +69,8 @@ def get_project_overview(
     try:
         project = project_service.get_project(project_id)
         ensure_token_workspace(token, project.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "projects:read")
+        require_scope(token, "runs:read")
 
         return overview_service.get_project_overview(
             project_id=project_id,

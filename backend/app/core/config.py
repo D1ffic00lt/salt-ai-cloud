@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,11 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
 
     database_url: str = "postgresql+psycopg://salt:salt@localhost:5432/salt_cloud"
+
+    bootstrap_setup_key: str | None = Field(
+        default=None,
+        validation_alias="SALTAI_BOOTSTRAP_SETUP_KEY",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

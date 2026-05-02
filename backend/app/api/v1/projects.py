@@ -23,7 +23,19 @@ def create_project(
         workspace_id: UUID,
         payload: ProjectCreate,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Project:
+    ensure_token_workspace(token, workspace_id)
+    require_scope(token, "projects:write")
+
+    if payload.created_by_id is not None and payload.created_by_id != token.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Project creator must match current API token user",
+        )
+
+    payload = payload.model_copy(update={"created_by_id": token.user_id})
+
     service = ProjectService(db)
 
     try:
@@ -38,7 +50,11 @@ def create_project(
 def list_workspace_projects(
         workspace_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> list[Project]:
+    ensure_token_workspace(token, workspace_id)
+    require_scope(token, "projects:read")
+
     service = ProjectService(db)
 
     try:
@@ -51,11 +67,16 @@ def list_workspace_projects(
 def get_project(
         project_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Project:
     service = ProjectService(db)
 
     try:
-        return service.get_project(project_id)
+        project = service.get_project(project_id)
+        ensure_token_workspace(token, project.workspace_id)
+        require_scope(token, "projects:read")
+
+        return project
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -72,7 +93,8 @@ def get_project_details(
     try:
         project = project_service.get_project(project_id)
         ensure_token_workspace(token, project.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "projects:read")
+        require_scope(token, "runs:read")
 
         runs = run_service.list_project_runs(project_id)
 

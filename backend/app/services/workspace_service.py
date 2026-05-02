@@ -16,6 +16,9 @@ class WorkspaceService:
         self.workspaces = WorkspaceRepository(db)
 
     def create_workspace(self, data: WorkspaceCreate) -> Workspace:
+        if data.owner_user_id is None:
+            raise ValueError("Owner user is required")
+
         owner = self.users.get(data.owner_user_id)
         if owner is None:
             raise LookupError("Owner user not found")

@@ -51,14 +51,27 @@ def ensure_token_workspace(token: ApiToken, workspace_id: UUID) -> None:
 def require_scope(token: ApiToken, scope: str) -> None:
     scopes = token.scopes or []
 
-    if "*" in scopes:
+    if _scope_is_allowed(scopes=scopes, required_scope=scope):
         return
 
-    if scope not in scopes:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Missing required scope: {scope}",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Missing required scope: {scope}",
+    )
+
+
+def _scope_is_allowed(scopes: list[str], required_scope: str) -> bool:
+    if "*" in scopes:
+        return True
+
+    if required_scope in scopes:
+        return True
+
+    resource, separator, action = required_scope.partition(":")
+    if separator and action == "read":
+        return f"{resource}:write" in scopes
+
+    return False
 
 
 def _authenticate_authorization_header(authorization: str, db: Session) -> ApiToken:

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import ensure_token_workspace, get_current_api_token, get_db, require_scope
@@ -18,7 +18,18 @@ router = APIRouter()
 def create_workspace(
         payload: WorkspaceCreate,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Workspace:
+    require_scope(token, "workspaces:write")
+
+    if payload.owner_user_id is not None and payload.owner_user_id != token.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace owner must match current API token user",
+        )
+
+    payload = payload.model_copy(update={"owner_user_id": token.user_id})
+
     service = WorkspaceService(db)
 
     try:
@@ -31,18 +42,28 @@ def create_workspace(
 
 @router.get("", response_model=list[WorkspaceRead])
 def list_workspaces(
-        owner_user_id: UUID | None = Query(default=None),
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> list[Workspace]:
+    require_scope(token, "workspaces:read")
+
     service = WorkspaceService(db)
-    return service.list_workspaces(owner_user_id=owner_user_id)
+
+    try:
+        return [service.get_workspace(token.workspace_id)]
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceRead)
 def get_workspace(
         workspace_id: UUID,
         db: Session = Depends(get_db),
+        token: ApiToken = Depends(get_current_api_token),
 ) -> Workspace:
+    ensure_token_workspace(token, workspace_id)
+    require_scope(token, "workspaces:read")
+
     service = WorkspaceService(db)
 
     try:
@@ -57,14 +78,15 @@ def get_workspace_details(
         db: Session = Depends(get_db),
         token: ApiToken = Depends(get_current_api_token),
 ) -> WorkspaceDetailsRead:
+    ensure_token_workspace(token, workspace_id)
+    require_scope(token, "workspaces:read")
+    require_scope(token, "projects:read")
+
     workspace_service = WorkspaceService(db)
     project_service = ProjectService(db)
 
     try:
         workspace = workspace_service.get_workspace(workspace_id)
-        ensure_token_workspace(token, workspace.id)
-        require_scope(token, "runs:write")
-
         projects = project_service.list_workspace_projects(workspace_id)
 
         return WorkspaceDetailsRead(

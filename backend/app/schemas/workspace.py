@@ -9,7 +9,7 @@ from app.schemas.project import ProjectRead
 class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=128)
-    owner_user_id: UUID
+    owner_user_id: UUID | None = None
     plan_id: UUID | None = None
 
 

@@ -1,23 +1,69 @@
+from secrets import compare_digest
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
     get_current_api_token,
     get_db,
-    get_optional_current_api_token,
 )
+from app.core.config import get_settings
 from app.db.models.api_token import ApiToken
 from app.schemas.api_token import (
     ApiTokenCreate,
     ApiTokenCreated,
     ApiTokenRead,
+    BootstrapCreate,
+    BootstrapCreated,
+    BootstrapUserRead,
     CurrentApiUser,
 )
+from app.schemas.workspace import WorkspaceRead
 from app.services.api_token_service import ApiTokenService
+from app.services.bootstrap_service import BootstrapService
 
 router = APIRouter()
+
+
+@router.post(
+    "/auth/bootstrap",
+    response_model=BootstrapCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+def bootstrap_cloud(
+        payload: BootstrapCreate,
+        setup_key: str | None = Header(default=None, alias="X-SaltAI-Setup-Key"),
+        db: Session = Depends(get_db),
+) -> BootstrapCreated:
+    settings = get_settings()
+
+    if settings.bootstrap_setup_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bootstrap setup key is not configured",
+        )
+
+    if setup_key is None or not compare_digest(setup_key, settings.bootstrap_setup_key):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid bootstrap setup key",
+        )
+
+    service = BootstrapService(db)
+
+    try:
+        user, workspace, token, raw_token = service.bootstrap(payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return BootstrapCreated(
+        user=BootstrapUserRead.model_validate(user),
+        workspace=WorkspaceRead.model_validate(workspace),
+        api_token=_created_token_response(token=token, raw_token=raw_token),
+    )
 
 
 @router.post(
@@ -29,7 +75,7 @@ def create_api_token(
         workspace_id: UUID,
         payload: ApiTokenCreate,
         db: Session = Depends(get_db),
-        current_token: ApiToken | None = Depends(get_optional_current_api_token),
+        current_token: ApiToken = Depends(get_current_api_token),
 ) -> ApiTokenCreated:
     service = ApiTokenService(db)
 
@@ -44,17 +90,7 @@ def create_api_token(
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
-    return ApiTokenCreated(
-        id=token.id,
-        workspace_id=token.workspace_id,
-        user_id=token.user_id,
-        name=token.name,
-        token=raw_token,
-        token_prefix=token.token_prefix,
-        scopes=token.scopes,
-        expires_at=token.expires_at,
-        created_at=token.created_at,
-    )
+    return _created_token_response(token=token, raw_token=raw_token)
 
 
 @router.get("/workspaces/{workspace_id}/api-tokens", response_model=list[ApiTokenRead])
@@ -130,3 +166,17 @@ def _revoke_api_token(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+def _created_token_response(token: ApiToken, raw_token: str) -> ApiTokenCreated:
+    return ApiTokenCreated(
+        id=token.id,
+        workspace_id=token.workspace_id,
+        user_id=token.user_id,
+        name=token.name,
+        token=raw_token,
+        token_prefix=token.token_prefix,
+        scopes=token.scopes,
+        expires_at=token.expires_at,
+        created_at=token.created_at,
+    )
