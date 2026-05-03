@@ -9,6 +9,7 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.run_repository import RunRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.run import RunCreate, RunUpdate
+from app.services.quota_service import QuotaService
 
 
 class RunService:
@@ -17,6 +18,7 @@ class RunService:
         self.users = UserRepository(db)
         self.projects = ProjectRepository(db)
         self.runs = RunRepository(db)
+        self.quotas = QuotaService(db)
 
     def create_run(self, project_id: UUID, data: RunCreate) -> Run:
         project = self.projects.get(project_id)
@@ -27,6 +29,8 @@ class RunService:
             user = self.users.get(data.created_by_id)
             if user is None:
                 raise LookupError("Creator user not found")
+
+        self.quotas.ensure_can_create_run(project.workspace_id)
 
         run = self.runs.create(
             workspace_id=project.workspace_id,
@@ -39,6 +43,8 @@ class RunService:
             tags=data.tags,
             started_at=datetime.now(timezone.utc),
         )
+
+        self.quotas.refresh_workspace_quota(project.workspace_id)
 
         self.db.commit()
         self.db.refresh(run)

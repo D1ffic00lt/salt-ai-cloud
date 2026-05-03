@@ -44,6 +44,8 @@ def create_run(
         return run_service.create_run(project_id=project_id, data=payload)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/projects/{project_id}/runs", response_model=list[RunRead])
@@ -58,7 +60,7 @@ def list_project_runs(
     try:
         project = project_service.get_project(project_id)
         ensure_token_workspace(token, project.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "runs:read")
 
         return run_service.list_project_runs(project_id)
     except LookupError as exc:
@@ -76,7 +78,7 @@ def get_run(
     try:
         run = service.get_run(run_id)
         ensure_token_workspace(token, run.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "runs:read")
 
         return run
     except LookupError as exc:
@@ -97,7 +99,10 @@ def get_run_details(
     try:
         run = run_service.get_run(run_id)
         ensure_token_workspace(token, run.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "runs:read")
+        require_scope(token, "metrics:read")
+        require_scope(token, "events:read")
+        require_scope(token, "artifacts:read")
 
         metrics = metric_service.list_run_metrics(run_id)
         events = event_service.list_run_events(run_id)

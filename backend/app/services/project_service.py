@@ -7,6 +7,7 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.project import ProjectCreate
+from app.services.quota_service import QuotaService
 
 
 class ProjectService:
@@ -15,6 +16,7 @@ class ProjectService:
         self.users = UserRepository(db)
         self.workspaces = WorkspaceRepository(db)
         self.projects = ProjectRepository(db)
+        self.quotas = QuotaService(db)
 
     def create_project(self, workspace_id: UUID, data: ProjectCreate) -> Project:
         workspace = self.workspaces.get(workspace_id)
@@ -33,12 +35,16 @@ class ProjectService:
         if existing_project is not None:
             raise ValueError("Project with this name already exists in workspace")
 
+        self.quotas.ensure_can_create_project(workspace_id)
+
         project = self.projects.create(
             workspace_id=workspace_id,
             name=data.name,
             description=data.description,
             created_by_id=data.created_by_id,
         )
+
+        self.quotas.refresh_workspace_quota(workspace_id)
 
         self.db.commit()
         self.db.refresh(project)

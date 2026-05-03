@@ -9,6 +9,7 @@ from app.infrastructure.storage import StorageBackend, get_storage_backend
 from app.repositories.artifact_repository import ArtifactRepository
 from app.repositories.run_repository import RunRepository
 from app.schemas.artifact import ArtifactComplete, ArtifactCreate
+from app.services.quota_service import QuotaService
 
 
 class ArtifactService:
@@ -16,6 +17,7 @@ class ArtifactService:
         self.db = db
         self.runs = RunRepository(db)
         self.artifacts = ArtifactRepository(db)
+        self.quotas = QuotaService(db)
         self.storage = storage or get_storage_backend()
 
     def create_artifact(self, run_id: UUID, data: ArtifactCreate) -> Artifact:
@@ -25,6 +27,11 @@ class ArtifactService:
 
         if run.status in {RunStatus.FINISHED.value, RunStatus.FAILED.value}:
             raise ValueError("Completed run cannot accept artifacts")
+
+        self.quotas.ensure_can_create_artifact(
+            workspace_id=run.workspace_id,
+            size_bytes=data.size_bytes,
+        )
 
         artifact = self.artifacts.create(
             workspace_id=run.workspace_id,
@@ -43,6 +50,8 @@ class ArtifactService:
             artifact_id=artifact.id,
             name=artifact.name,
         )
+
+        self.quotas.refresh_workspace_quota(run.workspace_id)
 
         self.db.commit()
         self.db.refresh(artifact)
@@ -69,6 +78,15 @@ class ArtifactService:
         if artifact.status == ArtifactStatus.DELETED.value:
             raise ValueError("Deleted artifact cannot be completed")
 
+        old_size_bytes = artifact.size_bytes or 0
+        new_size_bytes = data.size_bytes if data.size_bytes is not None else old_size_bytes
+        size_delta = new_size_bytes - old_size_bytes
+
+        self.quotas.ensure_can_add_storage_delta(
+            workspace_id=artifact.workspace_id,
+            delta_bytes=size_delta,
+        )
+
         storage_uri = data.storage_uri or artifact.storage_uri
         if storage_uri is None:
             storage_uri = self.storage.build_artifact_uri(
@@ -87,6 +105,8 @@ class ArtifactService:
             meta=data.meta,
         )
 
+        self.quotas.refresh_workspace_quota(artifact.workspace_id)
+
         self.db.commit()
         self.db.refresh(artifact)
 
@@ -101,6 +121,15 @@ class ArtifactService:
         if artifact.status == ArtifactStatus.UPLOADED.value:
             raise ValueError("Uploaded artifact cannot be uploaded again")
 
+        old_size_bytes = artifact.size_bytes or 0
+        upload_size_bytes = self._get_upload_size_bytes(file)
+
+        if upload_size_bytes is not None:
+            self.quotas.ensure_can_add_storage_delta(
+                workspace_id=artifact.workspace_id,
+                delta_bytes=upload_size_bytes - old_size_bytes,
+            )
+
         stored = self.storage.save_artifact_file(
             workspace_id=artifact.workspace_id,
             run_id=artifact.run_id,
@@ -108,6 +137,11 @@ class ArtifactService:
             name=artifact.name,
             fileobj=file.file,
             content_type=file.content_type,
+        )
+
+        self.quotas.ensure_can_add_storage_delta(
+            workspace_id=artifact.workspace_id,
+            delta_bytes=stored.size_bytes - old_size_bytes,
         )
 
         meta = {
@@ -124,6 +158,8 @@ class ArtifactService:
             hash_=stored.sha256,
             meta=meta,
         )
+
+        self.quotas.refresh_workspace_quota(artifact.workspace_id)
 
         self.db.commit()
         self.db.refresh(artifact)
@@ -158,3 +194,15 @@ class ArtifactService:
         path = self.storage.get_artifact_path(artifact.storage_uri)
 
         return artifact, str(path)
+
+    @staticmethod
+    def _get_upload_size_bytes(file: UploadFile) -> int | None:
+        try:
+            current_position = file.file.tell()
+            file.file.seek(0, 2)
+            size_bytes = file.file.tell()
+            file.file.seek(current_position)
+        except (OSError, ValueError):
+            return None
+
+        return size_bytes
