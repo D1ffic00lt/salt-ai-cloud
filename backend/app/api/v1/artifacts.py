@@ -57,7 +57,7 @@ def list_run_artifacts(
     try:
         run = run_service.get_run(run_id)
         ensure_token_workspace(token, run.workspace_id)
-        require_scope(token, "artifacts:write")
+        require_scope(token, "artifacts:read")
 
         return artifact_service.list_run_artifacts(run_id)
     except LookupError as exc:
@@ -75,7 +75,7 @@ def get_artifact(
     try:
         artifact = service.get_artifact(artifact_id)
         ensure_token_workspace(token, artifact.workspace_id)
-        require_scope(token, "artifacts:write")
+        require_scope(token, "artifacts:read")
 
         return artifact
     except LookupError as exc:
@@ -135,7 +135,7 @@ def get_artifact_download_reference(
     try:
         artifact = service.get_artifact(artifact_id)
         ensure_token_workspace(token, artifact.workspace_id)
-        require_scope(token, "artifacts:write")
+        require_scope(token, "artifacts:read")
 
         artifact, download_url = service.get_download_reference(artifact_id)
     except LookupError as exc:
@@ -161,7 +161,7 @@ def get_artifact_content(
     try:
         artifact = service.get_artifact(artifact_id)
         ensure_token_workspace(token, artifact.workspace_id)
-        require_scope(token, "artifacts:write")
+        require_scope(token, "artifacts:read")
 
         artifact, path = service.get_content_path(artifact_id)
     except LookupError as exc:

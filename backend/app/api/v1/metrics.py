@@ -30,7 +30,7 @@ def create_metric(
     try:
         run = run_service.get_run(run_id)
         ensure_token_workspace(token, run.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "metrics:write")
 
         return metric_service.create_metric(run_id=run_id, data=payload)
     except LookupError as exc:
@@ -51,7 +51,7 @@ def list_run_metrics(
     try:
         run = run_service.get_run(run_id)
         ensure_token_workspace(token, run.workspace_id)
-        require_scope(token, "runs:write")
+        require_scope(token, "metrics:read")
 
         return metric_service.list_run_metrics(run_id)
     except LookupError as exc:
