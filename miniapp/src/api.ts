@@ -1,5 +1,19 @@
 import { API_BASE_URL } from "./config";
-import type { Artifact, ProjectOverview, RunDetails, WorkspaceOverview } from "./types";
+import type {
+  ApiToken,
+  ApiTokenCreatePayload,
+  ApiTokenCreated,
+  Artifact,
+  CurrentApiUser,
+  ProjectOverview,
+  RunDetails,
+  WorkspaceOverview
+} from "./types";
+
+type RequestOptions = {
+  method?: string;
+  body?: unknown;
+};
 
 export class SaltCloudApiError extends Error {
   constructor(message: string) {
@@ -13,6 +27,10 @@ export class SaltCloudApi {
 
   constructor(token: string) {
     this.token = token.trim();
+  }
+
+  async getCurrentUser(): Promise<CurrentApiUser> {
+    return this.request<CurrentApiUser>("/auth/me");
   }
 
   async getOverview(): Promise<WorkspaceOverview> {
@@ -31,17 +49,47 @@ export class SaltCloudApi {
     return this.request<Artifact>(`/artifacts/${encodeURIComponent(artifactId)}`);
   }
 
-  private async request<T>(path: string): Promise<T> {
+  async listApiTokens(workspaceId: string): Promise<ApiToken[]> {
+    return this.request<ApiToken[]>(`/workspaces/${encodeURIComponent(workspaceId)}/api-tokens`);
+  }
+
+  async createApiToken(workspaceId: string, payload: ApiTokenCreatePayload): Promise<ApiTokenCreated> {
+    return this.request<ApiTokenCreated>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/api-tokens`,
+      {
+        method: "POST",
+        body: payload
+      }
+    );
+  }
+
+  async revokeApiToken(tokenId: string): Promise<ApiToken> {
+    return this.request<ApiToken>(
+      `/api-tokens/${encodeURIComponent(tokenId)}`,
+      {
+        method: "DELETE"
+      }
+    );
+  }
+
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     if (!this.token) {
       throw new SaltCloudApiError("API token is required");
     }
 
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      Authorization: `Bearer ${this.token}`
+    };
+
+    if (options.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${this.token}`
-      }
+      method: options.method || "GET",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
     });
 
     if (!response.ok) {
@@ -58,6 +106,10 @@ export class SaltCloudApi {
 
       if (typeof detail === "string") {
         return detail;
+      }
+
+      if (Array.isArray(detail)) {
+        return detail.map((item) => item?.msg || String(item)).join("; ");
       }
     } catch {
       return `SaltAI Cloud error: HTTP ${response.status}`;

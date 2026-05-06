@@ -1,16 +1,67 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { TOKEN_STORAGE_KEY } from "./config";
 import { SaltCloudApi, SaltCloudApiError } from "./api";
-import type { Artifact, Project, Run, RunDetails, WorkspaceOverview } from "./types";
+import { TOKEN_STORAGE_KEY } from "./config";
+import type {
+  ApiToken,
+  ApiTokenCreated,
+  Artifact,
+  CurrentApiUser,
+  Project,
+  Run,
+  RunDetails,
+  WorkspaceOverview
+} from "./types";
+
+type View = "dashboard" | "settings";
+type TokenPreset = "read" | "write" | "full";
+
+const TOKEN_PRESETS: Record<TokenPreset, { label: string; scopes: string[] }> = {
+  read: {
+    label: "Read-only",
+    scopes: [
+      "workspaces:read",
+      "projects:read",
+      "runs:read",
+      "metrics:read",
+      "events:read",
+      "artifacts:read"
+    ]
+  },
+  write: {
+    label: "Logger write",
+    scopes: [
+      "workspaces:read",
+      "projects:read",
+      "runs:read",
+      "runs:write",
+      "metrics:read",
+      "metrics:write",
+      "events:read",
+      "events:write",
+      "artifacts:read",
+      "artifacts:write"
+    ]
+  },
+  full: {
+    label: "Full workspace",
+    scopes: ["*"]
+  }
+};
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || "");
+  const [view, setView] = useState<View>("dashboard");
   const [overview, setOverview] = useState<WorkspaceOverview | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentApiUser | null>(null);
+  const [apiTokens, setApiTokens] = useState<ApiToken[]>([]);
+  const [createdToken, setCreatedToken] = useState<ApiTokenCreated | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [selectedRunDetails, setSelectedRunDetails] = useState<RunDetails | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
+  const [newTokenName, setNewTokenName] = useState("Mini App read-only");
+  const [newTokenPreset, setNewTokenPreset] = useState<TokenPreset>("read");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -25,14 +76,27 @@ export function App() {
 
   function saveToken(value: string) {
     setToken(value);
-    localStorage.setItem(TOKEN_STORAGE_KEY, value);
+
+    if (value.trim()) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, value);
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+
+    setCurrentUser(null);
+    setApiTokens([]);
+    setCreatedToken(null);
   }
 
   async function loadOverview() {
     await runAction(async () => {
+      const user = await api.getCurrentUser();
       const data = await api.getOverview();
+
       data.projects = sortByDate(data.projects, "created_at");
       data.recent_runs = sortByDate(data.recent_runs, "created_at");
+
+      setCurrentUser(user);
       setOverview(data);
       setSelectedProject(null);
       setRuns(data.recent_runs);
@@ -41,10 +105,55 @@ export function App() {
     });
   }
 
+  async function loadSettings() {
+    await runAction(async () => {
+      const user = await api.getCurrentUser();
+      const tokens = await api.listApiTokens(user.workspace_id);
+
+      setCurrentUser(user);
+      setApiTokens(sortByDate(tokens, "created_at"));
+    });
+  }
+
+  async function createApiToken() {
+    await runAction(async () => {
+      const user = currentUser || await api.getCurrentUser();
+      const preset = TOKEN_PRESETS[newTokenPreset];
+
+      const created = await api.createApiToken(user.workspace_id, {
+        name: newTokenName.trim() || preset.label,
+        user_id: user.user_id,
+        scopes: preset.scopes,
+        expires_at: null
+      });
+
+      const tokens = await api.listApiTokens(user.workspace_id);
+
+      setCurrentUser(user);
+      setCreatedToken(created);
+      setApiTokens(sortByDate(tokens, "created_at"));
+    });
+  }
+
+  async function revokeApiToken(tokenId: string) {
+    await runAction(async () => {
+      const user = currentUser || await api.getCurrentUser();
+
+      await api.revokeApiToken(tokenId);
+
+      const tokens = await api.listApiTokens(user.workspace_id);
+
+      setCurrentUser(user);
+      setApiTokens(sortByDate(tokens, "created_at"));
+    });
+  }
+
   async function openProject(project: Project) {
     await runAction(async () => {
       const data = await api.getProjectOverview(project.id);
+
       data.recent_runs = sortByDate(data.recent_runs, "created_at");
+
       setSelectedProject(data.project);
       setRuns(data.recent_runs);
       setSelectedRunDetails(null);
@@ -55,9 +164,11 @@ export function App() {
   async function openRun(runId: string) {
     await runAction(async () => {
       const data = await api.getRunDetails(runId);
+
       data.metrics = sortByDate(data.metrics, "timestamp");
       data.events = sortByDate(data.events, "timestamp");
       data.artifacts = sortByDate(data.artifacts, "created_at");
+
       setSelectedRunDetails(data);
       setSelectedArtifact(null);
     });
@@ -66,6 +177,7 @@ export function App() {
   async function openArtifact(artifactId: string) {
     await runAction(async () => {
       const data = await api.getArtifact(artifactId);
+
       setSelectedArtifact(data);
     });
   }
@@ -93,7 +205,22 @@ export function App() {
         <div>
           <p className="eyebrow">SaltAI Cloud</p>
           <h1>Mini App</h1>
-          <p className="muted">Введи API token, miniapp сам подтянет workspace, projects и runs.</p>
+          <p className="muted">Dashboard для просмотра runs и settings для управления API tokens.</p>
+        </div>
+
+        <div className="tabs">
+          <button
+            className={view === "dashboard" ? "tab active" : "tab"}
+            onClick={() => setView("dashboard")}
+          >
+            Dashboard
+          </button>
+          <button
+            className={view === "settings" ? "tab active" : "tab"}
+            onClick={() => setView("settings")}
+          >
+            Settings
+          </button>
         </div>
       </section>
 
@@ -108,13 +235,71 @@ export function App() {
           />
         </label>
 
-        <button disabled={loading} onClick={loadOverview}>
-          {loading ? "Loading..." : "Load SaltAI Cloud"}
+        <button disabled={loading} onClick={view === "settings" ? loadSettings : loadOverview}>
+          {loading ? "Loading..." : view === "settings" ? "Load Settings" : "Load SaltAI Cloud"}
         </button>
+
+        {currentUser && (
+          <div className="token-chip">
+            <span>workspace</span>
+            <code>{currentUser.workspace_id}</code>
+          </div>
+        )}
 
         {error && <p className="error">{error}</p>}
       </section>
 
+      {view === "dashboard" ? (
+        <DashboardView
+          overview={overview}
+          selectedProject={selectedProject}
+          runs={runs}
+          selectedRunDetails={selectedRunDetails}
+          selectedArtifact={selectedArtifact}
+          onOpenProject={openProject}
+          onOpenRun={openRun}
+          onOpenArtifact={openArtifact}
+        />
+      ) : (
+        <SettingsView
+          currentUser={currentUser}
+          apiTokens={apiTokens}
+          createdToken={createdToken}
+          newTokenName={newTokenName}
+          newTokenPreset={newTokenPreset}
+          loading={loading}
+          onLoadSettings={loadSettings}
+          onCreateToken={createApiToken}
+          onRevokeToken={revokeApiToken}
+          onNewTokenNameChange={setNewTokenName}
+          onNewTokenPresetChange={setNewTokenPreset}
+        />
+      )}
+    </main>
+  );
+}
+
+function DashboardView({
+  overview,
+  selectedProject,
+  runs,
+  selectedRunDetails,
+  selectedArtifact,
+  onOpenProject,
+  onOpenRun,
+  onOpenArtifact
+}: {
+  overview: WorkspaceOverview | null;
+  selectedProject: Project | null;
+  runs: Run[];
+  selectedRunDetails: RunDetails | null;
+  selectedArtifact: Artifact | null;
+  onOpenProject: (project: Project) => void;
+  onOpenRun: (runId: string) => void;
+  onOpenArtifact: (artifactId: string) => void;
+}) {
+  return (
+    <>
       {overview && (
         <section className="card hero">
           <div className="section-header">
@@ -141,7 +326,7 @@ export function App() {
             <ProjectsView
               projects={overview.projects}
               selectedProjectId={selectedProject?.id || ""}
-              onOpenProject={openProject}
+              onOpenProject={onOpenProject}
             />
           ) : (
             <p className="muted">Введи token и нажми Load SaltAI Cloud.</p>
@@ -157,7 +342,7 @@ export function App() {
           <RunsView
             project={selectedProject}
             runs={runs}
-            onOpenRun={openRun}
+            onOpenRun={onOpenRun}
           />
         </div>
       </section>
@@ -172,7 +357,7 @@ export function App() {
           {selectedRunDetails ? (
             <RunDetailsView
               details={selectedRunDetails}
-              onOpenArtifact={openArtifact}
+              onOpenArtifact={onOpenArtifact}
             />
           ) : (
             <p className="muted">Выбери run из списка.</p>
@@ -192,7 +377,140 @@ export function App() {
           )}
         </div>
       </section>
-    </main>
+    </>
+  );
+}
+
+function SettingsView({
+  currentUser,
+  apiTokens,
+  createdToken,
+  newTokenName,
+  newTokenPreset,
+  loading,
+  onLoadSettings,
+  onCreateToken,
+  onRevokeToken,
+  onNewTokenNameChange,
+  onNewTokenPresetChange
+}: {
+  currentUser: CurrentApiUser | null;
+  apiTokens: ApiToken[];
+  createdToken: ApiTokenCreated | null;
+  newTokenName: string;
+  newTokenPreset: TokenPreset;
+  loading: boolean;
+  onLoadSettings: () => void;
+  onCreateToken: () => void;
+  onRevokeToken: (tokenId: string) => void;
+  onNewTokenNameChange: (value: string) => void;
+  onNewTokenPresetChange: (value: TokenPreset) => void;
+}) {
+  return (
+    <section className="grid settings-grid">
+      <div className="card">
+        <div className="section-header">
+          <h2>Current token</h2>
+          {currentUser && <span>{currentUser.scopes.includes("*") ? "full" : `${currentUser.scopes.length} scopes`}</span>}
+        </div>
+
+        {currentUser ? (
+          <div className="details">
+            <KeyValue label="user" value={currentUser.user_id} />
+            <KeyValue label="workspace" value={currentUser.workspace_id} />
+            <KeyValue label="token" value={currentUser.token_id} />
+
+            <h4>Scopes</h4>
+            <ScopesView scopes={currentUser.scopes} />
+          </div>
+        ) : (
+          <div className="details">
+            <p className="muted">Нажми Load Settings, чтобы подтянуть текущий token и workspace.</p>
+            <button disabled={loading} onClick={onLoadSettings}>
+              Load Settings
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="section-header">
+          <h2>Create API token</h2>
+          <span>{TOKEN_PRESETS[newTokenPreset].label}</span>
+        </div>
+
+        <div className="details">
+          <label>
+            <span>Token name</span>
+            <input
+              value={newTokenName}
+              placeholder="Mini App read-only"
+              onChange={(event) => onNewTokenNameChange(event.target.value)}
+            />
+          </label>
+
+          <label>
+            <span>Preset</span>
+            <select
+              value={newTokenPreset}
+              onChange={(event) => onNewTokenPresetChange(event.target.value as TokenPreset)}
+            >
+              <option value="read">Read-only</option>
+              <option value="write">Logger write</option>
+              <option value="full">Full workspace</option>
+            </select>
+          </label>
+
+          <ScopesView scopes={TOKEN_PRESETS[newTokenPreset].scopes} />
+
+          <button disabled={loading || !currentUser} onClick={onCreateToken}>
+            Create token
+          </button>
+
+          {createdToken && (
+            <div className="created-token">
+              <p className="muted">Сохрани token сейчас: потом backend его больше не покажет.</p>
+              <code>{createdToken.token}</code>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card wide-card">
+        <div className="section-header">
+          <h2>Workspace API tokens</h2>
+          <span>{apiTokens.length}</span>
+        </div>
+
+        {apiTokens.length === 0 ? (
+          <p className="muted">Tokens не загружены или у текущего token нет права tokens:write.</p>
+        ) : (
+          <div className="list">
+            {apiTokens.map((apiToken) => (
+              <div className="list-item token-row" key={apiToken.id}>
+                <span className="item-title">
+                  {apiToken.name}
+                  {apiToken.id === currentUser?.token_id ? " · current" : ""}
+                  {apiToken.revoked_at ? " · revoked" : ""}
+                </span>
+                <span className="item-meta">{apiToken.token_prefix}...</span>
+                <span className="item-id">{apiToken.id}</span>
+
+                <div className="token-row-footer">
+                  <span>{apiToken.scopes.includes("*") ? "*" : apiToken.scopes.join(", ")}</span>
+                  <button
+                    disabled={loading || Boolean(apiToken.revoked_at)}
+                    onClick={() => onRevokeToken(apiToken.id)}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -364,6 +682,16 @@ function ArtifactView({ artifact }: { artifact: Artifact }) {
           ))}
         </>
       )}
+    </div>
+  );
+}
+
+function ScopesView({ scopes }: { scopes: string[] }) {
+  return (
+    <div className="scopes">
+      {scopes.map((scope) => (
+        <code key={scope}>{scope}</code>
+      ))}
     </div>
   );
 }

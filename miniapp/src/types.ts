@@ -22,8 +22,8 @@ export type Run = {
   id: string;
   workspace_id: string;
   project_id: string;
-  created_by_id: string;
-  name: string;
+  created_by_id: string | null;
+  name: string | null;
   status: string;
   config: Record<string, unknown>;
   manifest: Record<string, unknown>;
@@ -118,4 +118,43 @@ export type RunDetails = {
   metrics: Metric[];
   events: Event[];
   artifacts: Artifact[];
+};
+
+export type CurrentApiUser = {
+  user_id: string;
+  workspace_id: string;
+  token_id: string;
+  scopes: string[];
+};
+
+export type ApiToken = {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  name: string;
+  token_prefix: string;
+  scopes: string[];
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+export type ApiTokenCreatePayload = {
+  name: string;
+  user_id: string;
+  scopes: string[];
+  expires_at: string | null;
+};
+
+export type ApiTokenCreated = {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  name: string;
+  token: string;
+  token_prefix: string;
+  scopes: string[];
+  expires_at: string | null;
+  created_at: string;
 };
