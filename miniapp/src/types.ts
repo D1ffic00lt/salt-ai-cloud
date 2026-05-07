@@ -18,6 +18,11 @@ export type Project = {
   updated_at: string;
 };
 
+export type ProjectCreatePayload = {
+  name: string;
+  description: string | null;
+};
+
 export type Run = {
   id: string;
   workspace_id: string;
@@ -72,6 +77,12 @@ export type Artifact = {
   meta: Record<string, unknown>;
   created_at: string;
   completed_at: string | null;
+};
+
+export type ArtifactDownloadReference = {
+  artifact_id: string;
+  storage_uri: string | null;
+  download_url: string;
 };
 
 export type RunStatusCounters = {

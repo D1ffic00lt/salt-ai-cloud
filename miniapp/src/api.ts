@@ -4,7 +4,10 @@ import type {
   ApiTokenCreatePayload,
   ApiTokenCreated,
   Artifact,
+  ArtifactDownloadReference,
   CurrentApiUser,
+  Project,
+  ProjectCreatePayload,
   ProjectOverview,
   RunDetails,
   WorkspaceOverview
@@ -37,6 +40,16 @@ export class SaltCloudApi {
     return this.request<WorkspaceOverview>("/overview?recent_runs_limit=50");
   }
 
+  async createProject(workspaceId: string, payload: ProjectCreatePayload): Promise<Project> {
+    return this.request<Project>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+      {
+        method: "POST",
+        body: payload
+      }
+    );
+  }
+
   async getProjectOverview(projectId: string): Promise<ProjectOverview> {
     return this.request<ProjectOverview>(`/projects/${encodeURIComponent(projectId)}/overview?recent_runs_limit=50`);
   }
@@ -47,6 +60,14 @@ export class SaltCloudApi {
 
   async getArtifact(artifactId: string): Promise<Artifact> {
     return this.request<Artifact>(`/artifacts/${encodeURIComponent(artifactId)}`);
+  }
+
+  async getArtifactDownloadReference(artifactId: string): Promise<ArtifactDownloadReference> {
+    return this.request<ArtifactDownloadReference>(`/artifacts/${encodeURIComponent(artifactId)}/download`);
+  }
+
+  async downloadArtifactContent(artifactId: string): Promise<Blob> {
+    return this.requestBlob(`/artifacts/${encodeURIComponent(artifactId)}/content`);
   }
 
   async listApiTokens(workspaceId: string): Promise<ApiToken[]> {
@@ -97,6 +118,26 @@ export class SaltCloudApi {
     }
 
     return response.json() as Promise<T>;
+  }
+
+  private async requestBlob(path: string): Promise<Blob> {
+    if (!this.token) {
+      throw new SaltCloudApiError("API token is required");
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "GET",
+      headers: {
+        Accept: "*/*",
+        Authorization: `Bearer ${this.token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new SaltCloudApiError(await this.readError(response));
+    }
+
+    return response.blob();
   }
 
   private async readError(response: Response): Promise<string> {
